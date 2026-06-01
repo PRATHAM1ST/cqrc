@@ -193,8 +193,8 @@ export default function DashboardPage() {
 
         {/* Recent conversations */}
         <Card className="border-border/50">
-          <CardHeader className="flex-row items-center justify-between">
-            <div>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+            <div className="flex flex-col space-y-1">
               <CardTitle className="text-base">Recent Conversations</CardTitle>
               <CardDescription>Latest chatbot interactions</CardDescription>
             </div>

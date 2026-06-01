@@ -111,7 +111,7 @@ export default function ConversationsPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" style={{ minHeight: '60vh' }}>
         {/* Conversation list */}
-        <Card className="border-border/50 lg:col-span-1">
+        <Card className={`border-border/50 lg:col-span-1 ${selectedId ? 'hidden lg:block' : ''}`}>
           <CardHeader>
             <CardTitle className="text-base">All Conversations</CardTitle>
             <CardDescription>{conversations.length} conversation{conversations.length !== 1 ? 's' : ''}</CardDescription>
@@ -142,8 +142,8 @@ export default function ConversationsPage() {
                       <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                         <MessageCircle className="h-4 w-4 text-primary" />
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{c.title}</p>
+                      <div className="flex-1 min-w-0 pr-2">
+                        <p className="text-sm font-medium line-clamp-2 break-words whitespace-normal">{c.title}</p>
                         <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                           <Clock className="h-3 w-3" />
                           {formatDistanceToNow(new Date(c.created_at), { addSuffix: true })}
@@ -162,7 +162,7 @@ export default function ConversationsPage() {
         </Card>
 
         {/* Messages view */}
-        <Card className="border-border/50 lg:col-span-2">
+        <Card className={`border-border/50 lg:col-span-2 ${!selectedId ? 'hidden lg:block' : ''}`}>
           {!selectedId ? (
             <CardContent className="flex items-center justify-center h-full min-h-[400px]">
               <div className="text-center text-muted-foreground">

@@ -270,20 +270,20 @@ export default function QAPairsPage() {
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Badge variant="secondary" className="text-xs">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-2">
+                      <Badge variant="secondary" className="text-xs whitespace-nowrap">
                         {pair.category}
                       </Badge>
                       {pair.active === 1 ? (
-                        <span className="text-xs text-green-400 flex items-center gap-1">
-                          <CheckCircle className="h-3 w-3" /> Active
+                        <span className="text-xs text-green-400 flex items-center gap-1 whitespace-nowrap">
+                          <CheckCircle className="h-3 w-3 shrink-0" /> Active
                         </span>
                       ) : (
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Circle className="h-3 w-3" /> Inactive
+                        <span className="text-xs text-muted-foreground flex items-center gap-1 whitespace-nowrap">
+                          <Circle className="h-3 w-3 shrink-0" /> Inactive
                         </span>
                       )}
-                      <span className="text-xs text-muted-foreground ml-auto">
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">
                         {formatDistanceToNow(new Date(pair.updated_at), { addSuffix: true })}
                       </span>
                     </div>

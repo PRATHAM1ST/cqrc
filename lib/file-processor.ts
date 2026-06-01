@@ -33,12 +33,16 @@ export async function parsePDF(buffer: Buffer): Promise<string> {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const PDFParser = require('pdf2json');
   return new Promise((resolve, reject) => {
-    const pdfParser = new PDFParser(this, 1);
+    const pdfParser = new PDFParser(null, true);
     
-    pdfParser.on('pdfParser_dataError', (errData: any) => reject(errData.parserError));
+    pdfParser.on('pdfParser_dataError', (errData: any) => reject(new Error(errData.parserError?.message || 'PDF parsing failed')));
     pdfParser.on('pdfParser_dataReady', () => {
-      const text = decodeURIComponent(pdfParser.getRawTextContent());
-      resolve(text);
+      try {
+        const text = pdfParser.getRawTextContent();
+        resolve(text);
+      } catch (err) {
+        reject(err);
+      }
     });
 
     pdfParser.parseBuffer(buffer);

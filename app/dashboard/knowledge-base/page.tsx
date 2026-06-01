@@ -169,8 +169,8 @@ export default function KnowledgeBasePage() {
 
       {/* Sources list */}
       <Card className="border-border/50">
-        <CardHeader className="flex-row items-center justify-between">
-          <div>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+          <div className="flex flex-col space-y-1">
             <CardTitle className="text-base">Uploaded Documents</CardTitle>
             <CardDescription>{sources.length} document{sources.length !== 1 ? 's' : ''}</CardDescription>
           </div>
@@ -204,17 +204,17 @@ export default function KnowledgeBasePage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-sm truncate">{source.name}</p>
-                      <div className="flex items-center gap-3 mt-0.5">
-                        <span className="text-xs text-muted-foreground">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">
                           {formatBytes(source.size)}
                         </span>
                         {source.chunks_count > 0 && (
-                          <span className="text-xs text-muted-foreground flex items-center gap-1">
-                            <Layers className="h-3 w-3" />
+                          <span className="text-xs text-muted-foreground flex items-center gap-1 whitespace-nowrap">
+                            <Layers className="h-3 w-3 shrink-0" />
                             {source.chunks_count} chunks
                           </span>
                         )}
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">
                           {formatDistanceToNow(new Date(source.created_at), { addSuffix: true })}
                         </span>
                       </div>
