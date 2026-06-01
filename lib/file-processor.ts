@@ -31,9 +31,18 @@ export function chunkText(
 
 export async function parsePDF(buffer: Buffer): Promise<string> {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const pdfParse = require('pdf-parse');
-  const data = await pdfParse(buffer);
-  return data.text ?? '';
+  const PDFParser = require('pdf2json');
+  return new Promise((resolve, reject) => {
+    const pdfParser = new PDFParser(this, 1);
+    
+    pdfParser.on('pdfParser_dataError', (errData: any) => reject(errData.parserError));
+    pdfParser.on('pdfParser_dataReady', () => {
+      const text = decodeURIComponent(pdfParser.getRawTextContent());
+      resolve(text);
+    });
+
+    pdfParser.parseBuffer(buffer);
+  });
 }
 
 export async function parseDOCX(buffer: Buffer): Promise<string> {
