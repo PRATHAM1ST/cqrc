@@ -13,7 +13,7 @@ function nanoid() {
 // ── Default model per provider ─────────────────────────────────────────────────
 const DEFAULT_MODELS: Record<AIProvider, string> = {
   groq: 'llama-3.3-70b-versatile',
-  gemini: 'gemini-2.0-flash',
+  gemini: 'gemini-2.5-flash',
   openai: 'gpt-4o-mini',
   anthropic: 'claude-haiku-4-5',
 };
@@ -218,15 +218,52 @@ Do NOT make up or guess any information.`;
 
       const reader = aiResponse.body!.getReader();
       const decoder = new TextDecoder();
+      let buffer = '';
 
       try {
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (done) {
+            // Process any remaining buffered data
+            if (buffer.trim()) {
+              const lines = buffer.split('\n');
+              for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                const data = line.slice(6).trim();
+                if (!data || data === '[DONE]') continue;
+                
+                let text = '';
+                try {
+                  const parsed = JSON.parse(data);
+                  if (provider === 'groq' || provider === 'openai') {
+                    text = parsed.choices?.[0]?.delta?.content ?? '';
+                  } else if (provider === 'anthropic') {
+                    if (parsed.type === 'content_block_delta') {
+                      text = parsed.delta?.text ?? '';
+                    }
+                  } else if (provider === 'gemini') {
+                    // Old format: candidates[].content.parts[].text
+                    text = parsed.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+                    // New format: delta.text (content.delta / step.delta events)
+                    if (!text && parsed.delta?.type === 'text') {
+                      text = parsed.delta.text ?? '';
+                    }
+                  }
+                } catch {}
+                if (text) {
+                  fullResponse += text;
+                  controller.enqueue(encode({ type: 'delta', content: text }));
+                }
+              }
+            }
+            break;
+          }
 
-          const raw = decoder.decode(value, { stream: true });
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
 
-          for (const line of raw.split('\n')) {
+          for (const line of lines) {
             if (!line.startsWith('data: ')) continue;
             const data = line.slice(6).trim();
             if (!data || data === '[DONE]') continue;
@@ -242,8 +279,13 @@ Do NOT make up or guess any information.`;
                   text = parsed.delta?.text ?? '';
                 }
               } else if (provider === 'gemini') {
+                // Old format: candidates[].content.parts[].text
                 text =
                   parsed.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+                // New format: delta.text (content.delta / step.delta events)
+                if (!text && parsed.delta?.type === 'text') {
+                  text = parsed.delta.text ?? '';
+                }
               }
             } catch {
               // Malformed JSON line — skip
