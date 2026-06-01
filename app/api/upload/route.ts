@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { redis } from '@/lib/db';
 import { parseFile, chunkText, SUPPORTED_EXTENSIONS } from '@/lib/file-processor';
 import path from 'path';
 
@@ -27,15 +27,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const db = getDb();
     const sourceId = nanoid();
     const now = new Date().toISOString();
 
     // Insert source record with "processing" status
-    db.prepare(
-      `INSERT INTO knowledge_sources (id, name, type, size, chunks_count, created_at, status)
-       VALUES (?, ?, ?, ?, 0, ?, 'processing')`
-    ).run(sourceId, file.name, ext, file.size, now);
+    await redis.hset(`ks:${sourceId}`, {
+      id: sourceId,
+      name: file.name,
+      type: ext,
+      size: file.size,
+      chunks_count: 0,
+      created_at: now,
+      status: 'processing',
+      error_message: '',
+    });
+    await redis.sadd('ks:all', sourceId);
 
     // Parse the file
     const buffer = Buffer.from(await file.arrayBuffer());
@@ -44,16 +50,18 @@ export async function POST(request: NextRequest) {
     try {
       text = await parseFile(buffer, file.name);
     } catch (err) {
-      db.prepare(
-        `UPDATE knowledge_sources SET status = 'error', error_message = ? WHERE id = ?`
-      ).run(String(err), sourceId);
+      await redis.hset(`ks:${sourceId}`, {
+        status: 'error',
+        error_message: String(err),
+      });
       return NextResponse.json({ error: `Failed to parse file: ${err}` }, { status: 422 });
     }
 
     if (!text || text.trim().length < 10) {
-      db.prepare(
-        `UPDATE knowledge_sources SET status = 'error', error_message = ? WHERE id = ?`
-      ).run('File appears to be empty or could not be read', sourceId);
+      await redis.hset(`ks:${sourceId}`, {
+        status: 'error',
+        error_message: 'File appears to be empty or could not be read',
+      });
       return NextResponse.json({ error: 'File appears to be empty' }, { status: 422 });
     }
 
@@ -61,33 +69,32 @@ export async function POST(request: NextRequest) {
     const rawChunks = chunkText(text);
 
     if (rawChunks.length === 0) {
-      db.prepare(
-        `UPDATE knowledge_sources SET status = 'error', error_message = ? WHERE id = ?`
-      ).run('No usable text found in file', sourceId);
+      await redis.hset(`ks:${sourceId}`, {
+        status: 'error',
+        error_message: 'No usable text found in file',
+      });
       return NextResponse.json({ error: 'No usable text found in file' }, { status: 422 });
     }
 
-    const insertChunk = db.prepare(
-      `INSERT INTO chunks (id, source_id, content, chunk_index, metadata) VALUES (?, ?, ?, ?, ?)`
-    );
+    const pipeline = redis.pipeline();
 
-    const insertAll = db.transaction((chunks: string[]) => {
-      chunks.forEach((content, idx) => {
-        insertChunk.run(
-          nanoid(),
-          sourceId,
-          content,
-          idx,
-          JSON.stringify({ fileName: file.name, fileType: ext, chunkIndex: idx })
-        );
-      });
+    rawChunks.forEach((content, idx) => {
+      const chunkObj = {
+        id: nanoid(),
+        source_id: sourceId,
+        content,
+        chunk_index: idx,
+        metadata: JSON.stringify({ fileName: file.name, fileType: ext, chunkIndex: idx }),
+      };
+      pipeline.rpush(`chunks:${sourceId}`, JSON.stringify(chunkObj));
     });
 
-    insertAll(rawChunks);
+    pipeline.hset(`ks:${sourceId}`, {
+      status: 'ready',
+      chunks_count: rawChunks.length,
+    });
 
-    db.prepare(
-      `UPDATE knowledge_sources SET status = 'ready', chunks_count = ? WHERE id = ?`
-    ).run(rawChunks.length, sourceId);
+    await pipeline.exec();
 
     return NextResponse.json({
       success: true,
@@ -100,3 +107,4 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }
+

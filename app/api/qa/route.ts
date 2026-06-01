@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { redis } from '@/lib/db';
 import type { QAPair } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -12,43 +12,53 @@ function nanoid() {
 // GET — list all Q&A pairs
 export async function GET(request: NextRequest) {
   try {
-    const db = getDb();
     const { searchParams } = new URL(request.url);
     const category = searchParams.get('category');
-    const search = searchParams.get('search');
+    const search = searchParams.get('search')?.toLowerCase();
 
-    let query = `SELECT * FROM qa_pairs`;
-    const conditions: string[] = [];
-    const args: (string | number)[] = [];
+    const qaIds = await redis.smembers('qa:all');
+    let pairs: QAPair[] = [];
+    const categoriesSet = new Set<string>();
 
+    if (qaIds.length > 0) {
+      const pipeline = redis.pipeline();
+      qaIds.forEach(id => pipeline.hgetall(`qa:${id}`));
+      const results = await pipeline.exec();
+      
+      results.forEach(res => {
+        const qa = res as unknown as QAPair;
+        if (qa && qa.id) {
+          // Normalize types
+          if (qa.active !== undefined) qa.active = Number(qa.active);
+          pairs.push(qa);
+          categoriesSet.add(qa.category || 'General');
+        }
+      });
+    }
+
+    // Filter
     if (category && category !== 'all') {
-      conditions.push(`category = ?`);
-      args.push(category);
+      pairs = pairs.filter(p => p.category === category);
     }
 
     if (search) {
-      conditions.push(`(question LIKE ? OR answer LIKE ?)`);
-      args.push(`%${search}%`, `%${search}%`);
+      pairs = pairs.filter(p => 
+        p.question.toLowerCase().includes(search) || 
+        p.answer.toLowerCase().includes(search)
+      );
     }
 
-    if (conditions.length > 0) {
-      query += ` WHERE ` + conditions.join(' AND ');
-    }
+    // Sort by updated_at desc
+    pairs.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
 
-    query += ` ORDER BY updated_at DESC`;
-
-    const pairs = db.prepare(query).all(...args) as QAPair[];
-
-    // Get categories
-    const categories = db
-      .prepare(`SELECT DISTINCT category FROM qa_pairs ORDER BY category`)
-      .all() as Array<{ category: string }>;
+    const categories = Array.from(categoriesSet).sort();
 
     return NextResponse.json({
       pairs,
-      categories: categories.map((c) => c.category),
+      categories,
     });
   } catch (err) {
+    console.error('[qa get] Error:', err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }
@@ -66,18 +76,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const db = getDb();
     const id = nanoid();
     const now = new Date().toISOString();
 
-    db.prepare(
-      `INSERT INTO qa_pairs (id, question, answer, category, created_at, updated_at, active)
-       VALUES (?, ?, ?, ?, ?, ?, 1)`
-    ).run(id, question.trim(), answer.trim(), category.trim() || 'General', now, now);
+    const pair = {
+      id,
+      question: question.trim(),
+      answer: answer.trim(),
+      category: category.trim() || 'General',
+      created_at: now,
+      updated_at: now,
+      active: 1
+    };
 
-    const created = db.prepare('SELECT * FROM qa_pairs WHERE id = ?').get(id);
-    return NextResponse.json({ success: true, pair: created }, { status: 201 });
+    const pipeline = redis.pipeline();
+    pipeline.hset(`qa:${id}`, pair);
+    pipeline.sadd('qa:all', id);
+    await pipeline.exec();
+
+    return NextResponse.json({ success: true, pair }, { status: 201 });
   } catch (err) {
+    console.error('[qa post] Error:', err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }
+

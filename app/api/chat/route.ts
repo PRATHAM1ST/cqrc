@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { searchChunks, searchQAPairs, buildContext } from '@/lib/search';
-import { getDb } from '@/lib/db';
+import { redis } from '@/lib/db';
 import type { AIProvider } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -55,8 +55,8 @@ export async function POST(request: NextRequest) {
   }
 
   // ── RAG context retrieval ──────────────────────────────────────────────────
-  const chunks = searchChunks(message, 5);
-  const qaPairs = searchQAPairs(message, 3);
+  const chunks = await searchChunks(message, 5);
+  const qaPairs = await searchQAPairs(message, 3);
   const { context, sources } = buildContext(chunks, qaPairs);
 
   const hasContext = context.length > 0;
@@ -83,29 +83,31 @@ Do NOT make up or guess any information.`;
   const actualModel = model || DEFAULT_MODELS[provider];
 
   // ── Persist conversation & user message ───────────────────────────────────
-  const db = getDb();
   let convId = conversationId;
 
   if (!convId) {
     convId = nanoid();
     const title =
       message.length > 60 ? message.slice(0, 57) + '...' : message;
-    db.prepare(
-      `INSERT INTO conversations (id, title, created_at) VALUES (?, ?, ?)`
-    ).run(convId, title, new Date().toISOString());
+    await redis.hset(`conv:${convId}`, {
+      id: convId,
+      title,
+      created_at: new Date().toISOString()
+    });
+    await redis.zadd('conv:all', { score: Date.now(), member: convId });
   }
 
-  db.prepare(
-    `INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?, ?, 'user', ?, ?)`
-  ).run(nanoid(), convId, message, new Date().toISOString());
+  await redis.rpush(`msg:${convId}`, JSON.stringify({
+    id: nanoid(),
+    role: 'user',
+    content: message,
+    created_at: new Date().toISOString()
+  }));
 
   // ── Build message history ─────────────────────────────────────────────────
-  const dbHistory = db
-    .prepare(
-      `SELECT role, content FROM messages
-       WHERE conversation_id = ? ORDER BY created_at ASC LIMIT 20`
-    )
-    .all(convId) as Array<{ role: string; content: string }>;
+  const rawHistory = await redis.lrange(`msg:${convId}`, -20, -1);
+  const dbHistory = rawHistory.map(m => typeof m === 'string' ? JSON.parse(m) : m)
+    .map((m: any) => ({ role: m.role, content: m.content }));
 
   const messagesForAI = dbHistory.slice(-12); // Keep last 12 for context window
 
@@ -256,16 +258,14 @@ Do NOT make up or guess any information.`;
 
         // Save assistant message
         if (fullResponse.trim()) {
-          db.prepare(
-            `INSERT INTO messages (id, conversation_id, role, content, created_at, sources)
-             VALUES (?, ?, 'assistant', ?, ?, ?)`
-          ).run(
-            nanoid(),
-            convId,
-            fullResponse.trim(),
-            new Date().toISOString(),
-            sources.length > 0 ? JSON.stringify(sources) : null
-          );
+          const sourcesObj = sources.length > 0 ? JSON.stringify(sources) : null;
+          await redis.rpush(`msg:${convId}`, JSON.stringify({
+            id: nanoid(),
+            role: 'assistant',
+            content: fullResponse.trim(),
+            created_at: new Date().toISOString(),
+            sources: sourcesObj
+          }));
         }
 
         controller.enqueue(encode({ type: 'done' }));

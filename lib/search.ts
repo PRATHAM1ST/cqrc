@@ -1,4 +1,4 @@
-import { getDb } from './db';
+import { redis } from './db';
 
 // ── Tokenizer ──────────────────────────────────────────────────────────────────
 
@@ -40,22 +40,44 @@ export interface QASearchResult {
 
 // ── Search knowledge chunks with BM25 ─────────────────────────────────────────
 
-export function searchChunks(query: string, topK = 5): ChunkSearchResult[] {
-  const db = getDb();
+export async function searchChunks(query: string, topK = 5): Promise<ChunkSearchResult[]> {
+  const ksIds = await redis.smembers('ks:all');
+  if (ksIds.length === 0) return [];
 
-  const rows = db
-    .prepare(
-      `SELECT c.id, c.content, c.source_id, ks.name as source_name
-       FROM chunks c
-       JOIN knowledge_sources ks ON c.source_id = ks.id
-       WHERE ks.status = 'ready'`
-    )
-    .all() as Array<{
-      id: string;
-      content: string;
-      source_id: string;
-      source_name: string;
-    }>;
+  const ksPipeline = redis.pipeline();
+  ksIds.forEach(id => ksPipeline.hgetall(`ks:${id}`));
+  const ksResults = await ksPipeline.exec();
+
+  const readySources = ksResults
+    .map(res => res as any)
+    .filter(ks => ks && ks.status === 'ready');
+
+  if (readySources.length === 0) return [];
+
+  const chunksPipeline = redis.pipeline();
+  readySources.forEach(ks => chunksPipeline.lrange(`chunks:${ks.id}`, 0, -1));
+  const chunksResults = await chunksPipeline.exec();
+
+  const rows: Array<{
+    id: string;
+    content: string;
+    source_id: string;
+    source_name: string;
+  }> = [];
+
+  for (let i = 0; i < readySources.length; i++) {
+    const ks = readySources[i];
+    const chunks = chunksResults[i] as string[];
+    chunks.forEach(c => {
+      const parsed = typeof c === 'string' ? JSON.parse(c) : c;
+      rows.push({
+        id: parsed.id,
+        content: parsed.content,
+        source_id: ks.id,
+        source_name: ks.name
+      });
+    });
+  }
 
   if (rows.length === 0) return [];
 
@@ -98,12 +120,17 @@ export function searchChunks(query: string, topK = 5): ChunkSearchResult[] {
 
 // ── Search Q&A pairs ──────────────────────────────────────────────────────────
 
-export function searchQAPairs(query: string, topK = 3): QASearchResult[] {
-  const db = getDb();
+export async function searchQAPairs(query: string, topK = 3): Promise<QASearchResult[]> {
+  const qaIds = await redis.smembers('qa:all');
+  if (qaIds.length === 0) return [];
 
-  const pairs = db
-    .prepare(`SELECT question, answer, category FROM qa_pairs WHERE active = 1`)
-    .all() as Array<{ question: string; answer: string; category: string }>;
+  const pipeline = redis.pipeline();
+  qaIds.forEach(id => pipeline.hgetall(`qa:${id}`));
+  const results = await pipeline.exec();
+
+  const pairs = results
+    .map(res => res as any)
+    .filter(qa => qa && String(qa.active) === '1');
 
   if (pairs.length === 0) return [];
 
@@ -124,7 +151,12 @@ export function searchQAPairs(query: string, topK = 3): QASearchResult[] {
     const overlap = queryTokens.filter((t) => qTokens.includes(t)).length;
     score += (overlap / queryTokens.length) * 3;
 
-    return { ...pair, score };
+    return {
+      question: pair.question,
+      answer: pair.answer,
+      category: pair.category,
+      score
+    } as QASearchResult;
   });
 
   return scored
@@ -161,3 +193,4 @@ export function buildContext(
 
   return { context: context.trim(), sources };
 }
+
