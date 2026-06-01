@@ -1,36 +1,39 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Customer Query Replying Chatbot
+
+An AI-powered chatbot with an integrated Admin Dashboard. This application allows administrators to upload custom knowledge sources (PDFs, DOC/DOCX files, spreadsheets) and manage custom Q&A pairs. The chatbot uses this context to provide accurate, relevant, and conversational answers to customer queries, while gracefully handling questions outside its knowledge base.
+
+## Features
+- **Admin Dashboard:** Upload and manage documents, add/edit/delete custom Q&A pairs.
+- **Context-Aware Chatbot:** Answers queries strictly based on uploaded context, avoiding hallucinations.
 
 ## Getting Started
 
-First, run the development server:
+First, ensure you have your environment variables set up properly (e.g., your database connection and AI model API keys in your `.env` file). 
+
+Then, install dependencies and run the development server:
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## How to Use It
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. **Upload Documents:** Navigate to the upload section of the bot. You can drag and drop various file types. Supported formats typically include PDF, DOCX, XLSX, and TXT.
+2. **Process:** Wait for the bot to parse and index the document contents.
+3. **Ask Questions:** Use the chat interface to ask questions specific to the documents you uploaded. 
 
-## Learn More
+## Recommended Test Documents
 
-To learn more about Next.js, take a look at the following resources:
+If you want to test the bot's capabilities with real-world data, you can download and use these official public documents:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+*   **PDF:** [IRS Publication 527 - Residential Rental Property](https://www.irs.gov/pub/irs-pdf/p527.pdf) (Ask it about deductible expenses or advance rent)
+*   **Word (DOCX):** [HUD Form 92006 - Supplemental Application](https://www.hud.gov/sites/dfiles/Housing/documents/92006.docx) (Ask if the form is mandatory)
+*   **Excel (XLSX):** [HUD Fair Market Rents 2024](https://www.huduser.gov/portal/datasets/fmr/fmr2024/FY24_FMRs_rev.xlsx) (Ask it to find the FMR for a specific county)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Technologies Used
+- Next.js (App Router)
+- React
+- Typescript
